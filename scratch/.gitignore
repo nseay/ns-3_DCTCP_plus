@@ -3,3 +3,5 @@
 !.gitignore
 !subdir/
 !scratch-simulator.cc
+!bufferbloat.cc
+!plot_bufferbloat_figures.py

@@ -17,6 +17,9 @@
 *.tr
 [D|U]l[A-Z][a-z]*Stats.txt
 
+.ipynb_checkpoints
+*/.ipynb_checkpoints/*
+
 \#*#
 ~*
 
