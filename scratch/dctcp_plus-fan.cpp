@@ -18,61 +18,16 @@ using namespace ns3;
 
 std::stringstream filePlotQueue1;
 std::stringstream filePlotQueue2;
-std::ofstream rxS1R1Throughput;
-std::ofstream rxS2R2Throughput;
-std::ofstream rxS3R1Throughput;
-std::ofstream fairnessIndex;
-std::ofstream t1QueueLength;
-std::ofstream t2QueueLength;
+std::ofstream completionTimesStream;
 
-
-void
-PrintProgress (Time interval)
+uint64_t aggregatorBytes;
+void TraceAggregator (Ptr<const Packet> p, const Address& a)
 {
-  std::cout << "Progress to " << std::fixed << std::setprecision (1) << Simulator::Now ().GetSeconds () << " seconds simulation time" << std::endl;
-  Simulator::Schedule (interval, &PrintProgress, interval);
-}
-
-
-void
-PrintThroughput (Time measurementWindow)
-{
-  for (std::size_t i = 0; i < 10; i++)
-    {
-      rxS1R1Throughput << measurementWindow.GetSeconds () << "s " << i << " " << (rxS1R1Bytes[i] * 8) / (measurementWindow.GetSeconds ()) / 1e6 << std::endl;
-    }
-  for (std::size_t i = 0; i < 20; i++)
-    {
-      rxS2R2Throughput << Simulator::Now ().GetSeconds () << "s " << i << " " << (rxS2R2Bytes[i] * 8) / (measurementWindow.GetSeconds ()) / 1e6 << std::endl;
-    }
-  for (std::size_t i = 0; i < 10; i++)
-    {
-      rxS3R1Throughput << Simulator::Now ().GetSeconds () << "s " << i << " " << (rxS3R1Bytes[i] * 8) / (measurementWindow.GetSeconds ()) / 1e6 << std::endl;
-    }
-}
-
-
-void
-CheckT1QueueSize (Ptr<QueueDisc> queue)
-{
-  // 1500 byte packets
-  uint32_t qSize = queue->GetNPackets ();
-  Time backlog = Seconds (static_cast<double> (qSize * 1500 * 8) / 1e10); // 10 Gb/s
-  // report size in units of packets and ms
-  t1QueueLength << std::fixed << std::setprecision (2) << Simulator::Now ().GetSeconds () << " " << qSize << " " << backlog.GetMicroSeconds () << std::endl;
-  // check queue size every 1/100 of a second
-  Simulator::Schedule (MilliSeconds (10), &CheckT1QueueSize, queue);
-}
-
-void
-CheckT2QueueSize (Ptr<QueueDisc> queue)
-{
-  uint32_t qSize = queue->GetNPackets ();
-  Time backlog = Seconds (static_cast<double> (qSize * 1500 * 8) / 1e9); // 1 Gb/s
-  // report size in units of packets and ms
-  t2QueueLength << std::fixed << std::setprecision (2) << Simulator::Now ().GetSeconds () << " " << qSize << " " << backlog.GetMicroSeconds () << std::endl;
-  // check queue size every 1/100 of a second
-  Simulator::Schedule (MilliSeconds (10), &CheckT2QueueSize, queue);
+  aggregatorBytes += p->GetSize ();
+  if (aggregatorBytes >= 1024 * 1024 * 8)
+  {
+    completionTimesStream << Simulator::Now ().GetMilliSeconds () << std::endl;
+  }
 }
 
 int main (int argc, char *argv[])
@@ -103,12 +58,13 @@ int main (int argc, char *argv[])
   NodeContainer switches234;
   switches234.Create(numIntermediateSwitches);
   
+  /* Need to decide whether we want numFlows servers or 9 servers*/
   NodeContainer senders;
   senders.Create(numFlows);
   
   PointToPointHelper link;
-  pointToPointSenders.SetDeviceAttribute ("DataRate", StringValue ("1Gbps"));
-  pointToPointSenders.SetChannelAttribute ("Delay", StringValue ("50us"));
+  link.SetDeviceAttribute ("DataRate", StringValue ("1Gbps"));
+  link.SetChannelAttribute ("Delay", StringValue ("50us"));
 
   
   /******** Create Channels and Net Devices ********/
@@ -144,7 +100,6 @@ int main (int argc, char *argv[])
   /******** Set DCTCP defaults ********/
   NS_LOG_DEBUG("Setting TCP/DCTCP Defaults...");
 
-  // TODO: Update segsize later
   uint32_t tcpSegmentSize = 1448;
   Config::SetDefault ("ns3::TcpSocket::SegmentSize", UintegerValue (tcpSegmentSize));
   Config::SetDefault ("ns3::TcpSocket::DelAckCount", UintegerValue (2));
@@ -158,11 +113,13 @@ int main (int argc, char *argv[])
   // Config::SetDefault ("ns3::RedQueueDisc::Gentle", BooleanValue (true));
   Config::SetDefault ("ns3::RedQueueDisc::UseHardDrop", BooleanValue (false));
   Config::SetDefault ("ns3::RedQueueDisc::MeanPktSize", UintegerValue (1500));
-  // DCTCP+ used switches with 128KB of buffer
+  // DCTCP+ paper used switches with 128KB of buffer for all tests
   // If every packet is 1500 bytes, ~85 packets can be stored in 128 KB
   Config::SetDefault ("ns3::RedQueueDisc::MaxSize", QueueSizeValue (QueueSize ("85p")));
   // DCTCP tracks instantaneous queue length only; so set QW = 1
   Config::SetDefault ("ns3::RedQueueDisc::QW", DoubleValue (1));
+  
+  // Same as K for DCTCP+
   Config::SetDefault ("ns3::RedQueueDisc::MinTh", DoubleValue (20));
   Config::SetDefault ("ns3::RedQueueDisc::MaxTh", DoubleValue (60));
 
@@ -172,16 +129,6 @@ int main (int argc, char *argv[])
   InternetStackHelper stack;
   stack.InstallAll ();
 
-  TrafficControlHelper tchRed10;
-  // // MinTh = 50, MaxTh = 150 recommended in ACM SIGCOMM 2010 DCTCP Paper
-  // // This yields a target (MinTh) queue depth of 60us at 10 Gb/s
-  // tchRed10.SetRootQueueDisc ("ns3::RedQueueDisc",
-  //                            "LinkBandwidth", StringValue ("10Gbps"),
-  //                            "LinkDelay", StringValue ("10us"),
-  //                            "MinTh", DoubleValue (50),
-  //                            "MaxTh", DoubleValue (150));
-  // QueueDiscContainer queueDiscs1 = tchRed10.Install (T1T2);
-
   TrafficControlHelper tchRed;
   // MinTh = 20, MaxTh = 60 recommended in ACM SIGCOMM 2010 DCTCP Paper
   // This yields a target queue depth of 250us at 1 Gb/s
@@ -190,17 +137,15 @@ int main (int argc, char *argv[])
                             "LinkDelay", StringValue ("50us"),
                             "MinTh", DoubleValue (20),
                             "MaxTh", DoubleValue (60));
-  QueueDiscContainer queueDiscs = tchRed.Install (R1T2.Get (1));
   
-  tchRed.Install (S1ToA);
-  
+  QueueDiscContainer queueDiscs = tchRed.Install (S1ToA);
   for (std::size_t i = 0; i < numIntermediateSwitches; i++)
     {
-      tchRed.Install (intermediateSwitchesToS1[i].Get (1));
+      tchRed.Install (intermediateSwitchesToS1[i]);
     }
   for (std::size_t i = 0; i < numFlows; i++)
     {
-      tchRed.Install (sendersToIntermediateSwitches[i].Get (1));
+      tchRed.Install (sendersToIntermediateSwitches[i]);
     }
 
   Ipv4InterfaceContainer ipS1ToA = address.Assign (S1ToA);
@@ -243,65 +188,39 @@ int main (int argc, char *argv[])
   ApplicationContainer aggregatorApp = aggHelper.Install (aggregator);
   aggregatorApp.Start (Seconds (0.0));
   aggregatorApp.Stop (Seconds ((double)time));
-
+  
+  Ptr<PacketSink> aggSink = aggregatorApp.Get (0)->GetObject<PacketSink> ();
   // Sender Applications
   std::vector<BulkSendHelper> bulkSenders;
   bulkSenders.reserve(numFlows);
   std::vector<ApplicationContainer> senderApps;
   senderApps.reserve(numFlows);
+  uint64_t onemb = 1024 * 1024;
   for (std::size_t i = 0; i < numFlows; i++) {
     BulkSendHelper ftp ("ns3::TcpSocketFactory", Address ());
     ftp.SetAttribute ("Remote", aggregatorAddress);
     ftp.SetAttribute ("SendSize", UintegerValue (tcpSegmentSize));
     bulkSenders.push_back(ftp);
     ApplicationContainer senderApp = ftp.Install (senders[i]);
+    senderApp.SetMaxBytes (onemb / numFlows);
     senderApp.Start (Seconds (0.0));
     senderApp.Stop (Seconds ((double)time));
     senderApps.push_back(senderApp);
   }
 
   /*********** PROGRESS STOPS HERE ***********/
+  NS_LOG_DEBUG("Opening output file(s)...");
 
-
-  rxS1R1Throughput.open ("dctcp-example-s1-r1-throughput.dat", std::ios::out);
-  rxS1R1Throughput << "#Time(s) flow thruput(Mb/s)" << std::endl;
-  rxS2R2Throughput.open ("dctcp-example-s2-r2-throughput.dat", std::ios::out);
-  rxS2R2Throughput << "#Time(s) flow thruput(Mb/s)" << std::endl;
-  rxS3R1Throughput.open ("dctcp-example-s3-r1-throughput.dat", std::ios::out);
-  rxS3R1Throughput << "#Time(s) flow thruput(Mb/s)" << std::endl;
-  fairnessIndex.open ("dctcp-example-fairness.dat", std::ios::out);
-  t1QueueLength.open ("dctcp-example-t1-length.dat", std::ios::out);
-  t1QueueLength << "#Time(s) qlen(pkts) qlen(us)" << std::endl;
-  t2QueueLength.open ("dctcp-example-t2-length.dat", std::ios::out);
-  t2QueueLength << "#Time(s) qlen(pkts) qlen(us)" << std::endl;
-  for (std::size_t i = 0; i < 10; i++)
-    {
-      s1r1Sinks[i]->TraceConnectWithoutContext ("Rx", MakeBoundCallback (&TraceS1R1Sink, i));
-    }
-  for (std::size_t i = 0; i < 20; i++)
-    {
-      r2Sinks[i]->TraceConnectWithoutContext ("Rx", MakeBoundCallback (&TraceS2R2Sink, i));
-    }
-  for (std::size_t i = 0; i < 10; i++)
-    {
-      s3r1Sinks[i]->TraceConnectWithoutContext ("Rx", MakeBoundCallback (&TraceS3R1Sink, i));
-    }
-  Simulator::Schedule (flowStartupWindow + convergenceTime, &InitializeCounters);
-  Simulator::Schedule (flowStartupWindow + convergenceTime + measurementWindow, &PrintThroughput, measurementWindow);
-  Simulator::Schedule (flowStartupWindow + convergenceTime + measurementWindow, &PrintFairness, measurementWindow);
-  Simulator::Schedule (progressInterval, &PrintProgress, progressInterval);
-  Simulator::Schedule (flowStartupWindow + convergenceTime, &CheckT1QueueSize, queueDiscs1.Get (0));
-  Simulator::Schedule (flowStartupWindow + convergenceTime, &CheckT2QueueSize, queueDiscs2.Get (0));
-  Simulator::Stop (stopTime + TimeStep (1));
+  
+  completionTimesStream.open ("dctcp-completion-times-" + numFlows + "flows.txt", std::ios::out);
+  aggSink->TraceConnectWithoutContext ("Rx", MakeBoundCallback (&TraceAggregator));
+  
+  NS_LOG_DEBUG("Starting simulation...");
+  Simulator::Stop (Seconds ((double)time));
 
   Simulator::Run ();
 
-  rxS1R1Throughput.close ();
-  rxS2R2Throughput.close ();
-  rxS3R1Throughput.close ();
-  fairnessIndex.close ();
-  t1QueueLength.close ();
-  t2QueueLength.close ();
+  completionTimesStream.close ();
   Simulator::Destroy ();
   return 0;
 }
