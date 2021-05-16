@@ -3,7 +3,4 @@
 !.gitignore
 !subdir/
 !scratch-simulator.cc
-!bufferbloat.cc
-!dctcp_plus-fan.cpp
-!plot_bufferbloat_figures.py
-!dctcp-example.cc
+!plot_dctcp_figures.py

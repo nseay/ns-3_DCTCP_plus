@@ -28,17 +28,27 @@
 using namespace ns3;
 
 NS_LOG_COMPONENT_DEFINE ("DCTCP-PlusExperiment");
+const uint64_t ONE_MB =  1024 * 1024;
 std::stringstream filePlotQueue1;
 std::stringstream filePlotQueue2;
 std::ofstream completionTimesStream;
+int printLastXBytesReceived = 0;
+size_t numFlows = 9;
 
 uint64_t aggregatorBytes;
 void TraceAggregator (std::size_t index, Ptr<const Packet> p, const Address& a)
 {
   aggregatorBytes += p->GetSize ();
-  if (aggregatorBytes >= 1000 * 1024)
+  if (aggregatorBytes >= ONE_MB - printLastXBytesReceived)
   {
-    completionTimesStream << aggregatorBytes << " : " << Simulator::Now ().GetMilliSeconds () << std::endl;
+    if (printLastXBytesReceived == 0)
+    {
+      completionTimesStream << numFlows << ":" << Simulator::Now ().GetMilliSeconds () << std::endl;
+    } 
+    else 
+    {
+      completionTimesStream << aggregatorBytes << " : " << Simulator::Now ().GetMilliSeconds () << std::endl;
+    }
   }
 }
 
@@ -46,9 +56,9 @@ void TraceAggregator (std::size_t index, Ptr<const Packet> p, const Address& a)
 
 int main (int argc, char *argv[])
 {
-  std::string outputFilePath = "./outputs";
+  std::string outputFilePath = "../outputs/";
   std::string tcpTypeId = "TcpDctcp";
-  size_t numFlows = 9;
+  std::string outputFilename = "unnamed.txt";
   bool enableSwitchEcn = true;
   Time progressInterval = MicroSeconds (100);
 
@@ -57,6 +67,10 @@ int main (int argc, char *argv[])
   cmd.AddValue ("enableSwitchEcn", "enable ECN at switches", enableSwitchEcn);
   cmd.AddValue ("numFlows", "set the number of flows sent to aggregator", numFlows);
   cmd.AddValue ("outputFilePath", "set path for output files", outputFilePath);
+  cmd.AddValue ("outputFilename", "set filename for output file", outputFilename);
+  cmd.AddValue ("printLastXBytesReceived", 
+                "print arrival times of bytes > (1MB - printLastXBytesReceived)", 
+                printLastXBytesReceived);
   cmd.Parse (argc, argv);
   LogComponentEnable("DCTCP-PlusExperiment", LOG_LEVEL_DEBUG);
 
@@ -67,7 +81,11 @@ int main (int argc, char *argv[])
 
   /******** Create Nodes ********/
   NS_LOG_DEBUG("Creating Nodes...");
-  NS_LOG_DEBUG(std::to_string(numFlows) + " flows");
+  NS_LOG_DEBUG("using " + tcpTypeId + " with " + std::to_string(numFlows) + 
+               " flows, outputs in " + outputFilePath);
+  if (enableSwitchEcn) {
+    NS_LOG_DEBUG("ecn switch enabled");
+  }
   Ptr<Node> aggregator = CreateObject<Node> ();
   Ptr<Node> S1 = CreateObject<Node> ();
 
@@ -213,16 +231,14 @@ int main (int argc, char *argv[])
   bulkSenders.reserve (numFlows);
   std::vector<ApplicationContainer> senderApps;
   senderApps.reserve (numFlows);
-  uint64_t onemb = 1024 * 1024;
   for (std::size_t i = 0; i < numFlows; i++) {
     BulkSendHelper ftp ("ns3::TcpSocketFactory", Address ());
     ftp.SetAttribute ("Remote", aggregatorAddress);
     ftp.SetAttribute ("SendSize", UintegerValue (tcpSegmentSize));
-    uint64_t maxBytes = i < onemb % numFlows ? onemb / numFlows + 1 : onemb / numFlows;
+    uint64_t maxBytes = i < ONE_MB % numFlows ? ONE_MB / numFlows + 1 : ONE_MB / numFlows;
     ftp.SetAttribute ("MaxBytes", UintegerValue (maxBytes));
     bulkSenders.push_back (ftp);
     ApplicationContainer senderApp = ftp.Install (senders.Get (i));
-    //senderApp.Get (0)->SetMaxBytes (onemb / numFlows);
     senderApp.Start (startTime);
     senderApp.Stop (stopTime);
     senderApps.push_back (senderApp);
@@ -231,13 +247,16 @@ int main (int argc, char *argv[])
   /*********** PROGRESS STOPS HERE ***********/
   NS_LOG_DEBUG("Opening output file(s)...");
 
-  
-  completionTimesStream.open ("dctcp-completion-times-" + std::to_string(numFlows) + "flows.txt", std::ios::out);
+  // std::string filename = 
+  //   outputFilePath + 
+  //   "completion-times" + 
+  //   (printLastXBytesReceived == 0 ? ".txt" : "-" + std::to_string(numFlows) + "flows.txt");
+  // completionTimesStream.open (filename, std::ios::out | std::ios::app);
+  completionTimesStream.open (outputFilePath + outputFilename, std::ios::out | std::ios::app);
   aggSink->TraceConnectWithoutContext ("Rx", MakeBoundCallback (&TraceAggregator, 0));
   
   NS_LOG_DEBUG("Starting simulation...");
   Simulator::Stop (stopTime);
-
   Simulator::Run ();
 
   completionTimesStream.close ();
