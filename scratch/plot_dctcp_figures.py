@@ -19,6 +19,16 @@ def gatherTcpOrDctcpData(protocol='TcpDctcp'):
 
   return flowNums, completionTimes
 
+def createGraph(x, y, title, xlabel, ylabel, filename):
+  plt.figure()
+  plt.plot(x, y, c="C2")
+  plt.title(title)
+  plt.ylabel(ylabel)
+  plt.xlabel(xlabel)
+  plt.grid()
+  plt.savefig(filename)
+  print('Saving ' + filename)
+
 def gatherDctcpPlusData():
   '''
   DCTCP+ incorporates randomness, so many experiments are run
@@ -52,15 +62,24 @@ if args.tcpTypeId != None:
   
   # 1MB/ms * 8Mb/1MB * 1000ms/s
   throughputs = [1000 * 8 / time for time in completionTimes]
+  filename = os.path.join(args.dir, args.tcpTypeId + '-flow-completion-times_{}-{}.png'.format(str(flowNums[0]), str(flowNums[-1])))
+  createGraph(
+    x=flowNums,
+    y=completionTimes,
+    title='Flow Completion Times',
+    xlabel='Number of Flows',
+    ylabel='Time (ms)',
+    filename=filename
+  )
   filename = os.path.join(args.dir, args.tcpTypeId + '-throughput_{}-{}.png'.format(str(flowNums[0]), str(flowNums[-1])))
-  plt.figure()
-  plt.plot(flowNums, throughputs, c="C2")
-  plt.title('Throughput')
-  plt.ylabel('Throughput (Mbps)')
-  plt.xlabel('Number of Flows')
-  plt.grid()
-  plt.savefig(filename)
-  print('Saving ' + filename)
+  createGraph(
+    x=flowNums,
+    y=throughputs,
+    title='Throughput',
+    xlabel='Number of Flows',
+    ylabel='Throughput (Mbps)',
+    filename=filename
+  )
 else:
   # TODO: output combined graph with all protocols
   pass
