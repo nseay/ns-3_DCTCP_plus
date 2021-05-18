@@ -17,9 +17,9 @@ for TCPTYPE in ${Types[@]}; do
 
   NUMSENDERS=9
   # for NUMFLOWS in {1..100}; do
-  for NUMFLOWS in {12..14}; do
-    for RUN in {1..3}; do
-      NUMSENDERS=$NUMFLOWS
+  for NUMFLOWS in {1..50}; do
+    for RUN in {1..100}; do
+      # NUMSENDERS=$NUMFLOWS
       if [ "$PRINTLASTXBYTESRECIEVED" = 0 ]
       then
         FILENAME="completion-times.txt"

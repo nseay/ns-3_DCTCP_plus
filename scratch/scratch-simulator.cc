@@ -139,6 +139,7 @@ int main (int argc, char *argv[])
   uint32_t tcpSegmentSize = 1448;
   Config::SetDefault ("ns3::TcpSocket::SegmentSize", UintegerValue (tcpSegmentSize));
   Config::SetDefault ("ns3::TcpSocket::DelAckCount", UintegerValue (2));
+  // TODO: Double check this choice for rto
   Config::SetDefault ("ns3::TcpSocketBase::MinRto", TimeValue (Seconds (0.01)));
   GlobalValue::Bind ("ChecksumEnabled", BooleanValue (false));
 
