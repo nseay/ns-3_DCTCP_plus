@@ -4,8 +4,8 @@ BASEDIR=outputs
 
 PRINTLASTXBYTESRECIEVED=0
 # PRINTLASTXBYTESRECIEVED=10000
-
-for TCPTYPE in "TcpDctcp"; do
+declare -a Types=("TcpDctcp" "TcpNewReno")
+for TCPTYPE in ${Types[@]}; do
   DIR=outputs/$TCPTYPE/
   [ ! -d $DIR ] && mkdir $DIR
   if [ "$PRINTLASTXBYTESRECIEVED" = 0 ]
@@ -15,8 +15,11 @@ for TCPTYPE in "TcpDctcp"; do
     rm "${DIR}completion-times-"*flows.txt
   fi
 
-  for NUMFLOWS in {1..50}; do
-
+  NUMSENDERS=9
+  # for NUMFLOWS in {1..100}; do
+  for NUMFLOWS in {12..14}; do
+    for RUN in {1..3}; do
+      NUMSENDERS=$NUMFLOWS
       if [ "$PRINTLASTXBYTESRECIEVED" = 0 ]
       then
         FILENAME="completion-times.txt"
@@ -24,13 +27,14 @@ for TCPTYPE in "TcpDctcp"; do
         FILENAME="completion-times-${NUMFLOWS}flows.txt"
       fi
       # Run the NS-3 Simulation
-      ./waf --run "scratch/scratch-simulator --outputFilePath=$DIR --outputFilename=$FILENAME --numFlows=$NUMFLOWS --enableSwitchEcn=true --printLastXBytesReceived=$PRINTLASTXBYTESRECIEVED"
+      NS_GLOBAL_VALUE="RngRun=$RUN" ./waf --run "scratch/scratch-simulator --outputFilePath=$DIR --tcpTypeId=$TCPTYPE --outputFilename=$FILENAME --numFlows=$NUMFLOWS --numSenders=$NUMSENDERS --enableSwitchEcn=true --printLastXBytesReceived=$PRINTLASTXBYTESRECIEVED"
     done
-    # Plot the trace figures
-    if [ "$PRINTLASTXBYTESRECIEVED" = 0 ]
-      then
-        python3 scratch/plot_dctcp_figures.py --dir $BASEDIR --tcpTypeId $TCPTYPE
-    fi
+  done
+  # Plot the trace figures
+  if [ "$PRINTLASTXBYTESRECIEVED" = 0 ]
+    then
+      python3 scratch/plot_dctcp_figures.py --dir $BASEDIR --tcpTypeId $TCPTYPE
+  fi
 done
 
 echo "Simulations are done!"

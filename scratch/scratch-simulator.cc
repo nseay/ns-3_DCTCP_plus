@@ -61,11 +61,13 @@ int main (int argc, char *argv[])
   std::string outputFilename = "unnamed.txt";
   bool enableSwitchEcn = true;
   Time progressInterval = MicroSeconds (100);
+  size_t numSenders = 9;
 
   CommandLine cmd (__FILE__);
   cmd.AddValue ("tcpTypeId", "ns-3 TCP TypeId", tcpTypeId);
   cmd.AddValue ("enableSwitchEcn", "enable ECN at switches", enableSwitchEcn);
   cmd.AddValue ("numFlows", "set the number of flows sent to aggregator", numFlows);
+  cmd.AddValue ("numSenders", "set the number of sender leaves in topology", numSenders);
   cmd.AddValue ("outputFilePath", "set path for output files", outputFilePath);
   cmd.AddValue ("outputFilename", "set filename for output file", outputFilename);
   cmd.AddValue ("printLastXBytesReceived", 
@@ -93,9 +95,8 @@ int main (int argc, char *argv[])
   NodeContainer switches234;
   switches234.Create(numIntermediateSwitches);
   
-  /* Need to decide whether we want numFlows servers or 9 servers*/
   NodeContainer senders;
-  senders.Create(numFlows);
+  senders.Create(numSenders);
   
   PointToPointHelper link;
   link.SetDeviceAttribute ("DataRate", StringValue ("1Gbps"));
@@ -124,7 +125,7 @@ int main (int argc, char *argv[])
   std::vector<NetDeviceContainer> sendersToIntermediateSwitches;
   sendersToIntermediateSwitches.reserve (numFlows);
 
-  for (std::size_t i = 0; i < numFlows; i++)
+  for (std::size_t i = 0; i < numSenders; i++)
     {
       Ptr<Node> sender = senders.Get (i);
       sendersToIntermediateSwitches.push_back (
@@ -179,7 +180,7 @@ int main (int argc, char *argv[])
     {
       tchRed.Install (intermediateSwitchesToS1[i]);
     }
-  for (std::size_t i = 0; i < numFlows; i++)
+  for (std::size_t i = 0; i < numSenders; i++)
     {
       tchRed.Install (sendersToIntermediateSwitches[i]);
     }
@@ -199,7 +200,7 @@ int main (int argc, char *argv[])
       ipIntermediatesToS1.push_back (address.Assign (intermediateSwitchesToS1[i]));
     }
 
-  for (std::size_t i = 0; i < numFlows; i++)
+  for (std::size_t i = 0; i < numSenders; i++)
     {
       address.NewNetwork ();
       ipSendersToIntermediates.push_back (address.Assign (sendersToIntermediateSwitches[i]));
@@ -238,20 +239,14 @@ int main (int argc, char *argv[])
     uint64_t maxBytes = i < ONE_MB % numFlows ? ONE_MB / numFlows + 1 : ONE_MB / numFlows;
     ftp.SetAttribute ("MaxBytes", UintegerValue (maxBytes));
     bulkSenders.push_back (ftp);
-    ApplicationContainer senderApp = ftp.Install (senders.Get (i));
+    ApplicationContainer senderApp = ftp.Install (senders.Get (i % numSenders));
     senderApp.Start (startTime);
     senderApp.Stop (stopTime);
     senderApps.push_back (senderApp);
   }
-
-  /*********** PROGRESS STOPS HERE ***********/
+  
   NS_LOG_DEBUG("Opening output file(s)...");
 
-  // std::string filename = 
-  //   outputFilePath + 
-  //   "completion-times" + 
-  //   (printLastXBytesReceived == 0 ? ".txt" : "-" + std::to_string(numFlows) + "flows.txt");
-  // completionTimesStream.open (filename, std::ios::out | std::ios::app);
   completionTimesStream.open (outputFilePath + outputFilename, std::ios::out | std::ios::app);
   aggSink->TraceConnectWithoutContext ("Rx", MakeBoundCallback (&TraceAggregator, 0));
   
