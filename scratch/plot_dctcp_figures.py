@@ -9,14 +9,15 @@ import matplotlib.pyplot as plt
 
 
 def gatherData(protocol='TcpDctcp'):
-  runsForFlow = defaultdict(list)
+  flowCompletionTimes = defaultdict(list)
   with open(os.path.join(args.dir, protocol, 'completion-times.txt'),'r') as f:
     for line in f:
       times = line.split(":")
+      flowNum = float(times[0])
+      completionTime = int(times[1])
+      flowCompletionTimes[flowNum].append(completionTime)
 
-      runsForFlow[float(times[0])].append(int(times[1]))
-
-  return runsForFlow
+  return flowCompletionTimes
 
 def createGraph(x, y, title, xlabel, ylabel, filename):
   plt.figure()
@@ -45,14 +46,15 @@ args = parser.parse_args()
 TCP_TYPE_IDS = ['TcpNewReno', 'TcpDctcp', 'TcpDctcpPlus']
 
 if args.tcpTypeId != None:
-  runsForFlow = gatherData(args.tcpTypeId)
-
-  flowNums = [flowNum for flowNum in runsForFlow.keys()]
-  completionTimes = [sum(time) / len(time) for time in runsForFlow.values()]
+  flowCompletionTimes = gatherData(args.tcpTypeId)
+  # get average times
+  flowCompletionTimes = {flowNum: sum(times) / len(times) for flowNum, times in flowCompletionTimes.items()}
+  flowNums = [flowNum for flowNum in sorted(flowCompletionTimes.keys())]
+  completionTimes = [flowCompletionTimes[flowNum] for flowNum in flowNums]
   
   # 1MB/ms * 8Mb/1MB * 1000ms/s
   throughputs = [1000 * 8 / time for time in completionTimes]
-  filename = os.path.join(args.dir, args.tcpTypeId + '-flow-completion-times_{}-{}.png'.format(str(flowNums[0]), str(flowNums[-1])))
+  filename = os.path.join(args.dir, args.tcpTypeId + '-flow-completion-times_{}-{}.png'.format(int(flowNums[0]), int(flowNums[-1])))
   createGraph(
     x=flowNums,
     y=completionTimes,
@@ -61,7 +63,7 @@ if args.tcpTypeId != None:
     ylabel='Time (ms)',
     filename=filename
   )
-  filename = os.path.join(args.dir, args.tcpTypeId + '-throughput_{}-{}.png'.format(str(flowNums[0]), str(flowNums[-1])))
+  filename = os.path.join(args.dir, args.tcpTypeId + '-throughput_{}-{}.png'.format(int(flowNums[0]), int(flowNums[-1])))
   createGraph(
     x=flowNums,
     y=throughputs,
