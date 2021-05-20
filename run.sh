@@ -4,8 +4,8 @@ BASEDIR=outputs
 
 PRINTLASTXBYTESRECIEVED=0
 # PRINTLASTXBYTESRECIEVED=10000
-
-for TCPTYPE in "TcpDctcp"; do
+declare -a Types=("TcpDctcp" "TcpNewReno")
+for TCPTYPE in ${Types[@]}; do
   DIR=outputs/$TCPTYPE/
   [ ! -d $DIR ] && mkdir $DIR
   if [ "$PRINTLASTXBYTESRECIEVED" = 0 ]
@@ -24,7 +24,7 @@ for TCPTYPE in "TcpDctcp"; do
         FILENAME="completion-times-${NUMFLOWS}flows.txt"
       fi
       # Run the NS-3 Simulation
-      ./waf --run "scratch/scratch-simulator --outputFilePath=$DIR --outputFilename=$FILENAME --numFlows=$NUMFLOWS --enableSwitchEcn=true --printLastXBytesReceived=$PRINTLASTXBYTESRECIEVED"
+      ./waf --run "scratch/scratch-simulator --outputFilePath=$DIR --tcpTypeId=$TCPTYPE --outputFilename=$FILENAME --numFlows=$NUMFLOWS --enableSwitchEcn=true --printLastXBytesReceived=$PRINTLASTXBYTESRECIEVED"
     done
     # Plot the trace figures
     if [ "$PRINTLASTXBYTESRECIEVED" = 0 ]
