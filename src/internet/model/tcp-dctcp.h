@@ -90,6 +90,7 @@ public:
                           const Time &rtt);
   virtual void CwndEvent (Ptr<TcpSocketState> tcb,
                           const TcpSocketState::TcpCAEvent_t event);
+  bool getCeState () { return m_ceState; }
 private:
   /**
    * \brief Changes state of m_ceState to true

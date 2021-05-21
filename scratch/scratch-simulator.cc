@@ -62,14 +62,13 @@ int main (int argc, char *argv[])
   bool enableSwitchEcn = true;
   Time progressInterval = MicroSeconds (100);
   size_t numSenders = 9;
-
   CommandLine cmd (__FILE__);
   cmd.AddValue ("tcpTypeId", "ns-3 TCP TypeId", tcpTypeId);
   cmd.AddValue ("enableSwitchEcn", "enable ECN at switches", enableSwitchEcn);
   cmd.AddValue ("numFlows", "set the number of flows sent to aggregator", numFlows);
-  cmd.AddValue ("numSenders", "set the number of sender leaves in topology", numSenders);
   cmd.AddValue ("outputFilePath", "set path for output files", outputFilePath);
   cmd.AddValue ("outputFilename", "set filename for output file", outputFilename);
+  cmd.AddValue ("numSenders", "number of client host machines", numSenders);
   cmd.AddValue ("printLastXBytesReceived", 
                 "print arrival times of bytes > (1MB - printLastXBytesReceived)", 
                 printLastXBytesReceived);
@@ -95,7 +94,9 @@ int main (int argc, char *argv[])
   NodeContainer switches234;
   switches234.Create(numIntermediateSwitches);
   
+  /* Need to decide whether we want numFlows servers or 9 servers*/
   NodeContainer senders;
+  
   senders.Create(numSenders);
   
   PointToPointHelper link;
@@ -139,7 +140,6 @@ int main (int argc, char *argv[])
   uint32_t tcpSegmentSize = 1448;
   Config::SetDefault ("ns3::TcpSocket::SegmentSize", UintegerValue (tcpSegmentSize));
   Config::SetDefault ("ns3::TcpSocket::DelAckCount", UintegerValue (2));
-  // TODO: Double check this choice for rto
   Config::SetDefault ("ns3::TcpSocketBase::MinRto", TimeValue (Seconds (0.01)));
   GlobalValue::Bind ("ChecksumEnabled", BooleanValue (false));
 
@@ -245,9 +245,15 @@ int main (int argc, char *argv[])
     senderApp.Stop (stopTime);
     senderApps.push_back (senderApp);
   }
-  
+
+  /*********** PROGRESS STOPS HERE ***********/
   NS_LOG_DEBUG("Opening output file(s)...");
 
+  // std::string filename = 
+  //   outputFilePath + 
+  //   "completion-times" + 
+  //   (printLastXBytesReceived == 0 ? ".txt" : "-" + std::to_string(numFlows) + "flows.txt");
+  // completionTimesStream.open (filename, std::ios::out | std::ios::app);
   completionTimesStream.open (outputFilePath + outputFilename, std::ios::out | std::ios::app);
   aggSink->TraceConnectWithoutContext ("Rx", MakeBoundCallback (&TraceAggregator, 0));
   
