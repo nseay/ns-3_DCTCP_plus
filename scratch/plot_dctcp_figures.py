@@ -19,12 +19,14 @@ def gatherData(protocol='TcpDctcp'):
 
   return flowCompletionTimes
 
-def createGraph(x, y, title, xlabel, ylabel, filename):
+def createGraph(x, y, title, xlabel, ylabel, filename, style):
+  color, marker, linestyle = style
   plt.figure()
-  plt.plot(x, y, c="C2")
+  plt.plot(x, y, c=color, marker=marker, fillstyle='none', linestyle=linestyle)
   plt.title(title)
   plt.ylabel(ylabel)
   plt.xlabel(xlabel)
+  
   plt.grid()
   plt.savefig(filename)
   print('Saving ' + filename)
@@ -44,7 +46,10 @@ args = parser.parse_args()
 
 # TODO: dctcp plus type id is a placeholder; fix later
 TCP_TYPE_IDS = ['TcpNewReno', 'TcpDctcp', 'TcpDctcpPlus']
-
+styles = {
+  'TcpNewReno': ('green', '*', 'dashdot'),
+  'TcpDctcp': ('blue', '+', 'dashed'),
+  'TcpDctcpPlus': ('red', 'o', 'solid')}
 if args.tcpTypeId != None:
   flowCompletionTimes = gatherData(args.tcpTypeId)
   # get average times
@@ -54,23 +59,25 @@ if args.tcpTypeId != None:
   
   # 1MB/ms * 8Mb/1MB * 1000ms/s
   throughputs = [1000 * 8 / time for time in completionTimes]
-  filename = os.path.join(args.dir, args.tcpTypeId + '-flow-completion-times_{}-{}.png'.format(int(flowNums[0]), int(flowNums[-1])))
+  filename = os.path.join(args.dir, args.tcpTypeId, 'flow-completion-times_{}-{}.png'.format(int(flowNums[0]), int(flowNums[-1])))
   createGraph(
     x=flowNums,
     y=completionTimes,
     title='Flow Completion Times',
     xlabel='Number of Flows',
     ylabel='Time (ms)',
-    filename=filename
+    filename=filename,
+    style=styles[args.tcpTypeId]
   )
-  filename = os.path.join(args.dir, args.tcpTypeId + '-throughput_{}-{}.png'.format(int(flowNums[0]), int(flowNums[-1])))
+  filename = os.path.join(args.dir, args.tcpTypeId, 'throughput_{}-{}.png'.format(int(flowNums[0]), int(flowNums[-1])))
   createGraph(
     x=flowNums,
     y=throughputs,
     title='Throughput',
     xlabel='Number of Flows',
     ylabel='Throughput (Mbps)',
-    filename=filename
+    filename=filename,
+    style=styles[args.tcpTypeId]
   )
 else:
   # TODO: output combined graph with all protocols
