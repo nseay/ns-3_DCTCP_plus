@@ -23,6 +23,7 @@
 #include "ns3/internet-module.h"
 #include "ns3/point-to-point-module.h"
 #include "ns3/applications-module.h"
+#include "ns3/random-variable-stream.h"
 #include "ns3/traffic-control-module.h"
 
 using namespace ns3;
@@ -34,6 +35,7 @@ std::stringstream filePlotQueue2;
 std::ofstream completionTimesStream;
 int printLastXBytesReceived = 0;
 size_t numFlows = 9;
+Time firstFlowStart = Seconds(4); // high enough to ensure it's overwritten
 
 uint64_t aggregatorBytes;
 void TraceAggregator (std::size_t index, Ptr<const Packet> p, const Address& a)
@@ -43,11 +45,11 @@ void TraceAggregator (std::size_t index, Ptr<const Packet> p, const Address& a)
   {
     if (printLastXBytesReceived == 0)
     {
-      completionTimesStream << numFlows << ":" << Simulator::Now ().GetMilliSeconds () << std::endl;
+      completionTimesStream << numFlows << ":" << Simulator::Now ().GetMilliSeconds () - firstFlowStart.GetMilliSeconds () << std::endl;
     } 
     else 
     {
-      completionTimesStream << aggregatorBytes << " : " << Simulator::Now ().GetMilliSeconds () << std::endl;
+      completionTimesStream << aggregatorBytes << " : " << Simulator::Now ().GetMilliSeconds () - firstFlowStart.GetMilliSeconds () << std::endl;
     }
   }
 }
@@ -99,13 +101,11 @@ int main (int argc, char *argv[])
   
   senders.Create(numSenders);
   
+  /******** Create Channels and Net Devices ********/
+  NS_LOG_DEBUG("Creating Channels and Net Devices...");
   PointToPointHelper link;
   link.SetDeviceAttribute ("DataRate", StringValue ("1Gbps"));
   link.SetChannelAttribute ("Delay", StringValue ("50us"));
-
-  
-  /******** Create Channels and Net Devices ********/
-  NS_LOG_DEBUG("Creating Channels and Net Devices...");
   // Total of 13 links.
   // Layer 1
   NetDeviceContainer S1ToA = link.Install(S1, aggregator);
@@ -226,13 +226,17 @@ int main (int argc, char *argv[])
   ApplicationContainer aggregatorApp = aggHelper.Install (aggregator);
   aggregatorApp.Start (startTime);
   aggregatorApp.Stop (stopTime);
-  
   Ptr<PacketSink> aggSink = aggregatorApp.Get (0)->GetObject<PacketSink> ();
   // Sender Applications
   std::vector<BulkSendHelper> bulkSenders;
   bulkSenders.reserve (numFlows);
   std::vector<ApplicationContainer> senderApps;
   senderApps.reserve (numFlows);
+  /*
+    we'll use this random variable to randomize sender start times to simulate
+    the aggregator's request reaching that sender after some small delay
+  */
+  Ptr<UniformRandomVariable> aggregatorRequestDelay = CreateObject<UniformRandomVariable> ();
   for (std::size_t i = 0; i < numFlows; i++) {
     BulkSendHelper ftp ("ns3::TcpSocketFactory", Address ());
     ftp.SetAttribute ("Remote", aggregatorAddress);
@@ -241,19 +245,15 @@ int main (int argc, char *argv[])
     ftp.SetAttribute ("MaxBytes", UintegerValue (maxBytes));
     bulkSenders.push_back (ftp);
     ApplicationContainer senderApp = ftp.Install (senders.Get (i % numSenders));
-    senderApp.Start (startTime);
+    // delay is somewhere within 3 * link delay of 50µs (agg -> s1 -> intermediate -> sender)
+    Time slightDelay = MicroSeconds(aggregatorRequestDelay->GetInteger(1, 150));
+    firstFlowStart = firstFlowStart < slightDelay ? firstFlowStart : slightDelay;
+    senderApp.Start (startTime + slightDelay);
     senderApp.Stop (stopTime);
     senderApps.push_back (senderApp);
   }
 
-  /*********** PROGRESS STOPS HERE ***********/
   NS_LOG_DEBUG("Opening output file(s)...");
-
-  // std::string filename = 
-  //   outputFilePath + 
-  //   "completion-times" + 
-  //   (printLastXBytesReceived == 0 ? ".txt" : "-" + std::to_string(numFlows) + "flows.txt");
-  // completionTimesStream.open (filename, std::ios::out | std::ios::app);
   completionTimesStream.open (outputFilePath + outputFilename, std::ios::out | std::ios::app);
   aggSink->TraceConnectWithoutContext ("Rx", MakeBoundCallback (&TraceAggregator, 0));
   
