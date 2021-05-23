@@ -140,7 +140,8 @@ int main (int argc, char *argv[])
   uint32_t tcpSegmentSize = 1448;
   Config::SetDefault ("ns3::TcpSocket::SegmentSize", UintegerValue (tcpSegmentSize));
   Config::SetDefault ("ns3::TcpSocket::DelAckCount", UintegerValue (2));
-  Config::SetDefault ("ns3::TcpSocketBase::MinRto", TimeValue (Seconds (0.01)));
+  Config::SetDefault ("ns3::TcpSocketBase::UseEcn", StringValue ("On"));
+  Config::SetDefault ("ns3::TcpSocketBase::MinRto", TimeValue (MilliSeconds (10)));
   GlobalValue::Bind ("ChecksumEnabled", BooleanValue (false));
 
   // Set default parameters for RED queue disc

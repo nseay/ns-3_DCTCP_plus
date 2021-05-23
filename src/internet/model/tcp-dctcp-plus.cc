@@ -94,7 +94,7 @@ void TcpDctcpPlus::PktsAcked (Ptr<TcpSocketState> tcb, uint32_t segmentsAcked, c
     }
     // tcb->m_pacing = m_currState != DCTCP_NORMAL;
 
-    if (tcb->m_pacing) {
+    if (tcb->m_pacing && m_currState !=DCTCP_NORMAL) {
       // TODO: revisit m_segsize: with vs without header...
       // NS_LOG_DEBUG("NOT! Normal");
       // NS_LOG_DEBUG(rtt + m_slowTime);
