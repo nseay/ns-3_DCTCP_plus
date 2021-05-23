@@ -15,9 +15,7 @@ TypeId TcpDctcpPlus::GetTypeId (void)
 {
   static TypeId tid = TypeId ("ns3::TcpDctcpPlus")
     .SetParent<TcpDctcp> ()
-    .AddConstructor<TcpDctcpPlus> ()
-    //.SetGroupName ("Internet")
-  ;
+    .AddConstructor<TcpDctcpPlus> ();
   return tid;
 }
 
@@ -32,8 +30,9 @@ TcpDctcpPlus::TcpDctcpPlus ()
   : TcpDctcp (),
     m_backoffTimeUnit(100), // Microseconds
     m_currState(TcpDctcpPlus::DCTCP_NORMAL),
-    m_cWnd(1),
+    m_cWnd(1448),
     m_divisorFactor(2),
+    m_initialPacingRate(DataRate(0)),
     m_minCwnd(1448),
     m_randomizeSendingTime(true),
     m_retrans(false),
@@ -46,6 +45,11 @@ TcpDctcpPlus::TcpDctcpPlus ()
   m_backoffTimeGenerator = CreateObject<UniformRandomVariable> ();
 }
 
+void TcpDctcpPlus::Init (Ptr<TcpSocketState> tcb)
+{
+  TcpDctcp::Init(tcb);
+  m_initialPacingRate = tcb->m_pacingRate;
+}
 
 bool TcpDctcpPlus::isCongested() {
   // TODO: figure this out
@@ -56,9 +60,6 @@ bool TcpDctcpPlus::isToDCTCPTimeInc()
 {
   switch (m_currState) {
     case DCTCP_NORMAL:
-      NS_LOG_DEBUG("min cwnd vs actual");
-      NS_LOG_DEBUG(m_minCwnd);
-      NS_LOG_DEBUG(m_cWnd);
       return (m_cWnd == m_minCwnd && isCongested());
     default:
       return isCongested();
@@ -81,35 +82,44 @@ bool TcpDctcpPlus::isToDCTCPTimeDes()
 
 void TcpDctcpPlus::PktsAcked (Ptr<TcpSocketState> tcb, uint32_t segmentsAcked, const Time &rtt)
 {
-  m_retrans = tcb->m_highTxMark >= tcb->m_nextTxSequence;
-  m_cWnd = tcb->m_cWnd;
   TcpDctcp::PktsAcked(tcb, segmentsAcked, rtt);
-  ndctcpStatusEvolution();
-  tcb->m_pacing = m_currState != DCTCP_NORMAL;
+  if (!rtt.IsZero()) {
+    m_retrans = tcb->m_highTxMark >= tcb->m_nextTxSequence;
+    m_cWnd = tcb->m_cWnd;
+    ndctcpStatusEvolution();
+    tcb->m_pacing = true;
+    if (m_currState == DCTCP_NORMAL) {
+      // switch back to initial rate as we've returned to normal
+      tcb->m_pacingRate = m_initialPacingRate;
+    }
+    // tcb->m_pacing = m_currState != DCTCP_NORMAL;
 
-  if (tcb->m_pacing) {
-    // TODO: revisit m_segsize: with vs without header...
-    NS_LOG_DEBUG("NOT! Normal");
-    NS_LOG_DEBUG(rtt + m_slowTime);
-    NS_LOG_DEBUG(rtt);
-    tcb->m_pacingRate = DataRate((tcb->m_segmentSize * 8)/(rtt + m_slowTime).GetSeconds());
+    if (tcb->m_pacing) {
+      // TODO: revisit m_segsize: with vs without header...
+      // NS_LOG_DEBUG("NOT! Normal");
+      // NS_LOG_DEBUG(rtt + m_slowTime);
+      // NS_LOG_DEBUG(rtt);
+      uint64_t new_rate = uint64_t(1000000 * (tcb->m_segmentSize * 8.0)/double((rtt + m_slowTime).GetMicroSeconds()));
+      new_rate = new_rate == 0 ? 1 : new_rate;
+      // NS_LOG_DEBUG(new_rate);
+      tcb->m_pacingRate = DataRate(new_rate);
+    }
   }
 }
 
 // Algorithm 1 from DCTCP+ Paper
-// TODO: make changes to DCTCP operations based on these statuses
 void TcpDctcpPlus::ndctcpStatusEvolution() 
 {
   switch (m_currState) {
     case DCTCP_NORMAL:
-      NS_LOG_DEBUG("Normal");
+      // NS_LOG_DEBUG("Normal");
       if (isToDCTCPTimeInc()) {
         m_currState = DCTCP_TIME_INC;
         m_slowTime = MicroSeconds(m_randomizeSendingTime ? m_backoffTimeGenerator->GetInteger(1, m_backoffTimeUnit) : m_backoffTimeUnit);
       }
       break;
     case DCTCP_TIME_INC:
-      NS_LOG_DEBUG("Inc");
+      // NS_LOG_DEBUG("Inc");
       if (isToDCTCPTimeInc()) {
         m_slowTime += MicroSeconds(m_randomizeSendingTime ? m_backoffTimeGenerator->GetInteger(1, m_backoffTimeUnit) : m_backoffTimeUnit);
       } else if (isToDCTCPTimeDes()){
@@ -118,7 +128,7 @@ void TcpDctcpPlus::ndctcpStatusEvolution()
       }
       break;
     case DCTCP_TIME_DES:
-      NS_LOG_DEBUG("Des");
+      // NS_LOG_DEBUG("Des");
       if (isToDCTCPTimeInc()) {
         m_currState = DCTCP_TIME_DES;
         m_slowTime += MicroSeconds(m_randomizeSendingTime ? m_backoffTimeGenerator->GetInteger(1, m_backoffTimeUnit) : m_backoffTimeUnit);

@@ -4,8 +4,8 @@ BASEDIR=outputs
 
 PRINTLASTXBYTESRECIEVED=0
 # PRINTLASTXBYTESRECIEVED=10000
-# declare -a Types=("TcpDctcp" "TcpNewReno" "TcpDctcpPlus")
-declare -a Types=("TcpDctcpPlus")
+declare -a Types=("TcpNewReno" "TcpDctcp" "TcpDctcpPlus")
+# declare -a Types=("TcpDctcpPlus")
 for TCPTYPE in ${Types[@]}; do
   DIR=outputs/$TCPTYPE/
   [ ! -d $DIR ] && mkdir $DIR
@@ -18,8 +18,8 @@ for TCPTYPE in ${Types[@]}; do
 
   NUMSENDERS=9
   # for NUMFLOWS in {1..100}; do
-  for NUMFLOWS in {1..5}; do
-    for RUN in {1..5}; do
+  for NUMFLOWS in 1 20 25 35 60 ; do
+    for RUN in {1..10}; do
       # NUMSENDERS=$NUMFLOWS
       if [ "$PRINTLASTXBYTESRECIEVED" = 0 ]
       then

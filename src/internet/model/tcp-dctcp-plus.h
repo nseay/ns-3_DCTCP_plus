@@ -18,7 +18,8 @@ namespace ns3 {
   public:
     TcpDctcpPlus();
     static TypeId GetTypeId (void);
-
+    virtual void Init (Ptr<TcpSocketState> tcb);
+    
   private:
     enum DctcpPlusState {
       DCTCP_NORMAL,
@@ -31,6 +32,7 @@ namespace ns3 {
     DctcpPlusState m_currState;
     uint32_t m_cWnd;
     uint32_t m_divisorFactor;
+    DataRate m_initialPacingRate;
     uint32_t m_minCwnd;
     bool m_randomizeSendingTime;
     bool m_retrans;
