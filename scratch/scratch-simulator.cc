@@ -106,6 +106,8 @@ int main (int argc, char *argv[])
   PointToPointHelper link;
   link.SetDeviceAttribute ("DataRate", StringValue ("1Gbps"));
   link.SetChannelAttribute ("Delay", StringValue ("50us"));
+  link.SetQueue ("ns3::DropTailQueue", "MaxSize", StringValue ("1p"));
+  
   // Total of 13 links.
   // Layer 1
   NetDeviceContainer S1ToA = link.Install(S1, aggregator);
@@ -134,33 +136,44 @@ int main (int argc, char *argv[])
       );
     }
   
-  /******** Set DCTCP defaults ********/
+  /******** Set TCP defaults ********/
   NS_LOG_DEBUG("Setting TCP/DCTCP Defaults...");
 
   uint32_t tcpSegmentSize = 1448;
   Config::SetDefault ("ns3::TcpSocket::SegmentSize", UintegerValue (tcpSegmentSize));
-  Config::SetDefault ("ns3::TcpSocket::DelAckCount", UintegerValue (2));
-  Config::SetDefault ("ns3::TcpSocketBase::UseEcn", StringValue ("On"));
-  Config::SetDefault ("ns3::TcpSocketBase::MinRto", TimeValue (MilliSeconds (10)));
-  GlobalValue::Bind ("ChecksumEnabled", BooleanValue (false));
+  if (tcpTypeId != "TcpNewReno") {
+    Config::SetDefault ("ns3::TcpSocket::DelAckCount", UintegerValue (2));
+    GlobalValue::Bind ("ChecksumEnabled", BooleanValue (false));
+  }
+    Config::SetDefault ("ns3::TcpSocketBase::MinRto", TimeValue (MilliSeconds (10)));
 
-  // Set default parameters for RED queue disc
-  Config::SetDefault ("ns3::RedQueueDisc::UseEcn", BooleanValue (enableSwitchEcn));
-  // ARED may be used but the queueing delays will increase; it is disabled
-  // here because the SIGCOMM paper did not mention it
-  // Config::SetDefault ("ns3::RedQueueDisc::ARED", BooleanValue (true));
-  // Config::SetDefault ("ns3::RedQueueDisc::Gentle", BooleanValue (true));
-  Config::SetDefault ("ns3::RedQueueDisc::UseHardDrop", BooleanValue (false));
-  Config::SetDefault ("ns3::RedQueueDisc::MeanPktSize", UintegerValue (1500));
-  // DCTCP+ paper used switches with 128KB of buffer for all tests
-  // If every packet is 1500 bytes, ~85 packets can be stored in 128 KB
-  Config::SetDefault ("ns3::RedQueueDisc::MaxSize", QueueSizeValue (QueueSize ("85p")));
-  // DCTCP tracks instantaneous queue length only; so set QW = 1
-  Config::SetDefault ("ns3::RedQueueDisc::QW", DoubleValue (1));
+  Config::SetDefault ("ns3::TcpSocket::RcvBufSize", UintegerValue (1 << 21));
+  Config::SetDefault ("ns3::TcpSocket::SndBufSize", UintegerValue (1 << 21));
   
-  // Same as K for DCTCP+
-  Config::SetDefault ("ns3::RedQueueDisc::MinTh", DoubleValue (20));
-  Config::SetDefault ("ns3::RedQueueDisc::MaxTh", DoubleValue (20));
+    Config::SetDefault ("ns3::TcpSocketBase::Sack", BooleanValue (false));
+  if (tcpTypeId == "TcpNewReno") {
+    Config::SetDefault ("ns3::TcpL4Protocol::RecoveryType",
+                        TypeIdValue (TypeId::LookupByName ("ns3::TcpClassicRecovery")));
+  } else {
+    // Set default parameters for RED queue disc
+    Config::SetDefault ("ns3::RedQueueDisc::UseEcn", BooleanValue (enableSwitchEcn));
+    Config::SetDefault ("ns3::TcpSocketBase::UseEcn", StringValue ("On"));
+    // ARED may be used but the queueing delays will increase; it is disabled
+    // here because the SIGCOMM paper did not mention it
+    // Config::SetDefault ("ns3::RedQueueDisc::ARED", BooleanValue (true));
+    // Config::SetDefault ("ns3::RedQueueDisc::Gentle", BooleanValue (true));
+    Config::SetDefault ("ns3::RedQueueDisc::UseHardDrop", BooleanValue (false));
+    Config::SetDefault ("ns3::RedQueueDisc::MeanPktSize", UintegerValue (1500));
+    // DCTCP+ paper used switches with 128KB of buffer for all tests
+    // If every packet is 1500 bytes, ~85 packets can be stored in 128 KB
+    Config::SetDefault ("ns3::RedQueueDisc::MaxSize", QueueSizeValue (QueueSize ("85p")));
+    // DCTCP tracks instantaneous queue length only; so set QW = 1
+    Config::SetDefault ("ns3::RedQueueDisc::QW", DoubleValue (1));
+
+    // Same as K for DCTCP+
+    Config::SetDefault ("ns3::RedQueueDisc::MinTh", DoubleValue (20));
+    Config::SetDefault ("ns3::RedQueueDisc::MaxTh", DoubleValue (20));
+  }
 
 
   /******** Install Internet Stack ********/
@@ -168,23 +181,29 @@ int main (int argc, char *argv[])
   InternetStackHelper stack;
   stack.InstallAll ();
 
-  TrafficControlHelper tchRed;
-  // MinTh = 20, MaxTh = 60 recommended in ACM SIGCOMM 2010 DCTCP Paper
-  // This yields a target queue depth of 250us at 1 Gb/s
-  tchRed.SetRootQueueDisc ("ns3::RedQueueDisc",
+  TrafficControlHelper tch;
+  if (tcpTypeId == "TcpNewReno") {
+    tch.SetRootQueueDisc ("ns3::PfifoFastQueueDisc",
+                             "MaxSize", QueueSizeValue (QueueSize ("85p")));
+  } else {
+
+    // MinTh = 20, MaxTh = 60 recommended in ACM SIGCOMM 2010 DCTCP Paper
+    // This yields a target queue depth of 250us at 1 Gb/s
+    tch.SetRootQueueDisc ("ns3::RedQueueDisc",
                             "LinkBandwidth", StringValue ("1Gbps"),
                             "LinkDelay", StringValue ("50us"),
                             "MinTh", DoubleValue (20),
                             "MaxTh", DoubleValue (20));
   
-  QueueDiscContainer queueDiscs = tchRed.Install (S1ToA);
+  }
+  QueueDiscContainer queueDiscs = tch.Install (S1ToA);
   for (std::size_t i = 0; i < numIntermediateSwitches; i++)
     {
-      tchRed.Install (intermediateSwitchesToS1[i]);
+      tch.Install (intermediateSwitchesToS1[i]);
     }
   for (std::size_t i = 0; i < numSenders; i++)
     {
-      tchRed.Install (sendersToIntermediateSwitches[i]);
+      tch.Install (sendersToIntermediateSwitches[i]);
     }
 
   Ipv4AddressHelper address;
