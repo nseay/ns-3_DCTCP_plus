@@ -105,7 +105,7 @@ int main (int argc, char *argv[])
   NS_LOG_DEBUG("Creating Channels and Net Devices...");
   PointToPointHelper link;
   link.SetDeviceAttribute ("DataRate", StringValue ("1Gbps"));
-  link.SetChannelAttribute ("Delay", StringValue ("50us"));
+  link.SetChannelAttribute ("Delay", StringValue ("25us"));
   link.SetQueue ("ns3::DropTailQueue", "MaxSize", StringValue ("1p"));
   
   // Total of 13 links.
@@ -141,12 +141,12 @@ int main (int argc, char *argv[])
 
   uint32_t tcpSegmentSize = 1448;
   Config::SetDefault ("ns3::TcpSocket::SegmentSize", UintegerValue (tcpSegmentSize));
-  if (tcpTypeId != "TcpNewReno") {
-    Config::SetDefault ("ns3::TcpSocket::DelAckCount", UintegerValue (2));
-    GlobalValue::Bind ("ChecksumEnabled", BooleanValue (false));
-  }
-    Config::SetDefault ("ns3::TcpSocketBase::MinRto", TimeValue (MilliSeconds (10)));
-
+  // if (tcpTypeId != "TcpNewReno") {
+  //   Config::SetDefault ("ns3::TcpSocket::DelAckCount", UintegerValue (2));
+  //   GlobalValue::Bind ("ChecksumEnabled", BooleanValue (false));
+  // }
+  
+  Config::SetDefault ("ns3::TcpSocketBase::MinRto", TimeValue (MilliSeconds (10)));
   Config::SetDefault ("ns3::TcpSocket::RcvBufSize", UintegerValue (1 << 21));
   Config::SetDefault ("ns3::TcpSocket::SndBufSize", UintegerValue (1 << 21));
   
@@ -166,7 +166,8 @@ int main (int argc, char *argv[])
     Config::SetDefault ("ns3::RedQueueDisc::MeanPktSize", UintegerValue (1500));
     // DCTCP+ paper used switches with 128KB of buffer for all tests
     // If every packet is 1500 bytes, ~85 packets can be stored in 128 KB
-    Config::SetDefault ("ns3::RedQueueDisc::MaxSize", QueueSizeValue (QueueSize ("85p")));
+    Config::SetDefault ("ns3::RedQueueDisc::MaxSize", QueueSizeValue (QueueSize ("340p")));
+    // Config::SetDefault ("ns3::RedQueueDisc::MaxSize", QueueSizeValue (QueueSize ("85p")));
     // DCTCP tracks instantaneous queue length only; so set QW = 1
     Config::SetDefault ("ns3::RedQueueDisc::QW", DoubleValue (1));
 
@@ -184,14 +185,15 @@ int main (int argc, char *argv[])
   TrafficControlHelper tch;
   if (tcpTypeId == "TcpNewReno") {
     tch.SetRootQueueDisc ("ns3::PfifoFastQueueDisc",
-                             "MaxSize", QueueSizeValue (QueueSize ("85p")));
+                             "MaxSize", QueueSizeValue (QueueSize ("340p")));
+                            //  "MaxSize", QueueSizeValue (QueueSize ("85p")));
   } else {
 
     // MinTh = 20, MaxTh = 60 recommended in ACM SIGCOMM 2010 DCTCP Paper
     // This yields a target queue depth of 250us at 1 Gb/s
     tch.SetRootQueueDisc ("ns3::RedQueueDisc",
                             "LinkBandwidth", StringValue ("1Gbps"),
-                            "LinkDelay", StringValue ("50us"),
+                            "LinkDelay", StringValue ("25us"),
                             "MinTh", DoubleValue (20),
                             "MaxTh", DoubleValue (20));
   
@@ -265,8 +267,7 @@ int main (int argc, char *argv[])
     ftp.SetAttribute ("MaxBytes", UintegerValue (maxBytes));
     bulkSenders.push_back (ftp);
     ApplicationContainer senderApp = ftp.Install (senders.Get (i % numSenders));
-    // delay is somewhere within 3 * link delay of 50µs (agg -> s1 -> intermediate -> sender)
-    Time slightDelay = MicroSeconds(aggregatorRequestDelay->GetInteger(1, 150));
+    Time slightDelay = MicroSeconds(aggregatorRequestDelay->GetInteger(1, 10));
     firstFlowStart = firstFlowStart < slightDelay ? firstFlowStart : slightDelay;
     senderApp.Start (startTime + slightDelay);
     senderApp.Stop (stopTime);

@@ -36,9 +36,9 @@ TcpDctcpPlus::TcpDctcpPlus ()
     m_minCwnd(1448),
     m_randomizeSendingTime(true),
     m_retrans(false),
-    m_slowTime(MicroSeconds(1)),
+    m_slowTime(MicroSeconds(50)),
     // TODO: update as we go
-    m_thresholdT(MicroSeconds(2))
+    m_thresholdT(MicroSeconds(50))
 {
   NS_LOG_FUNCTION (this);
   LogComponentEnable("TcpDctcpPlus", LOG_LEVEL_DEBUG);
@@ -115,13 +115,13 @@ void TcpDctcpPlus::ndctcpStatusEvolution()
       // NS_LOG_DEBUG("Normal");
       if (isToDCTCPTimeInc()) {
         m_currState = DCTCP_TIME_INC;
-        m_slowTime = MicroSeconds(m_randomizeSendingTime ? m_backoffTimeGenerator->GetInteger(1, m_backoffTimeUnit) : m_backoffTimeUnit);
+        m_slowTime = MicroSeconds(m_randomizeSendingTime ? m_backoffTimeGenerator->GetInteger(m_backoffTimeUnit - 25, m_backoffTimeUnit + 25) : m_backoffTimeUnit);
       }
       break;
     case DCTCP_TIME_INC:
       // NS_LOG_DEBUG("Inc");
       if (isToDCTCPTimeInc()) {
-        m_slowTime += MicroSeconds(m_randomizeSendingTime ? m_backoffTimeGenerator->GetInteger(1, m_backoffTimeUnit) : m_backoffTimeUnit);
+        m_slowTime += MicroSeconds(m_randomizeSendingTime ? m_backoffTimeGenerator->GetInteger(m_backoffTimeUnit - 25, m_backoffTimeUnit + 25) : m_backoffTimeUnit);
       } else if (isToDCTCPTimeDes()){
         m_currState = DCTCP_TIME_INC;
         m_slowTime = MicroSeconds((m_slowTime.ToInteger(ns3::Time::Unit::US) / m_divisorFactor) + 1);
@@ -131,7 +131,7 @@ void TcpDctcpPlus::ndctcpStatusEvolution()
       // NS_LOG_DEBUG("Des");
       if (isToDCTCPTimeInc()) {
         m_currState = DCTCP_TIME_DES;
-        m_slowTime += MicroSeconds(m_randomizeSendingTime ? m_backoffTimeGenerator->GetInteger(1, m_backoffTimeUnit) : m_backoffTimeUnit);
+        m_slowTime += MicroSeconds(m_randomizeSendingTime ? m_backoffTimeGenerator->GetInteger(m_backoffTimeUnit - 25, m_backoffTimeUnit + 25) : m_backoffTimeUnit);
       } else if (m_slowTime > m_thresholdT) {
         m_slowTime = MicroSeconds((m_slowTime.ToInteger(ns3::Time::Unit::US) / m_divisorFactor) + 1);
       } else {
