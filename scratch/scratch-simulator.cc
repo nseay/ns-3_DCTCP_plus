@@ -36,6 +36,7 @@ std::ofstream completionTimesStream;
 int printLastXBytesReceived = 0;
 size_t numFlows = 9;
 Time firstFlowStart = Seconds(4); // high enough to ensure it's overwritten
+uint finishTime = 0;
 
 uint64_t aggregatorBytes;
 void TraceAggregator (std::size_t index, Ptr<const Packet> p, const Address& a)
@@ -45,11 +46,13 @@ void TraceAggregator (std::size_t index, Ptr<const Packet> p, const Address& a)
   {
     if (printLastXBytesReceived == 0)
     {
-      completionTimesStream << numFlows << ":" << Simulator::Now ().GetMilliSeconds () - firstFlowStart.GetMilliSeconds () << std::endl;
+      finishTime = Simulator::Now ().GetMilliSeconds ();
+      completionTimesStream << numFlows << ":" << finishTime  - firstFlowStart.GetMilliSeconds () << std::endl;
     } 
     else 
     {
-      completionTimesStream << aggregatorBytes << " : " << Simulator::Now ().GetMilliSeconds () - firstFlowStart.GetMilliSeconds () << std::endl;
+      finishTime = Simulator::Now ().GetMilliSeconds ();
+      completionTimesStream << aggregatorBytes << " : " << finishTime - firstFlowStart.GetMilliSeconds () << std::endl;
     }
   }
 }
@@ -79,7 +82,7 @@ int main (int argc, char *argv[])
 
   Config::SetDefault ("ns3::TcpL4Protocol::SocketType", StringValue ("ns3::" + tcpTypeId));
   Time startTime = Seconds (0);
-  Time stopTime = Seconds (2);
+  Time stopTime = Seconds (5);
 
 
   /******** Create Nodes ********/
@@ -166,14 +169,14 @@ int main (int argc, char *argv[])
     Config::SetDefault ("ns3::RedQueueDisc::MeanPktSize", UintegerValue (1500));
     // DCTCP+ paper used switches with 128KB of buffer for all tests
     // If every packet is 1500 bytes, ~85 packets can be stored in 128 KB
-    Config::SetDefault ("ns3::RedQueueDisc::MaxSize", QueueSizeValue (QueueSize ("340p")));
-    // Config::SetDefault ("ns3::RedQueueDisc::MaxSize", QueueSizeValue (QueueSize ("85p")));
+    // Config::SetDefault ("ns3::RedQueueDisc::MaxSize", QueueSizeValue (QueueSize ("340p")));
+    Config::SetDefault ("ns3::RedQueueDisc::MaxSize", QueueSizeValue (QueueSize ("85p")));
     // DCTCP tracks instantaneous queue length only; so set QW = 1
     Config::SetDefault ("ns3::RedQueueDisc::QW", DoubleValue (1));
 
     // Same as K for DCTCP+
-    Config::SetDefault ("ns3::RedQueueDisc::MinTh", DoubleValue (20));
-    Config::SetDefault ("ns3::RedQueueDisc::MaxTh", DoubleValue (20));
+    Config::SetDefault ("ns3::RedQueueDisc::MinTh", DoubleValue (22));
+    Config::SetDefault ("ns3::RedQueueDisc::MaxTh", DoubleValue (22)); // iterate through different values here
   }
 
 
@@ -185,17 +188,18 @@ int main (int argc, char *argv[])
   TrafficControlHelper tch;
   if (tcpTypeId == "TcpNewReno") {
     tch.SetRootQueueDisc ("ns3::PfifoFastQueueDisc",
-                             "MaxSize", QueueSizeValue (QueueSize ("340p")));
-                            //  "MaxSize", QueueSizeValue (QueueSize ("85p")));
+                            //  "MaxSize", QueueSizeValue (QueueSize ("340p")));
+                             "MaxSize", QueueSizeValue (QueueSize ("85p")));
   } else {
 
     // MinTh = 20, MaxTh = 60 recommended in ACM SIGCOMM 2010 DCTCP Paper
     // This yields a target queue depth of 250us at 1 Gb/s
+    // DCTCP+ paper says 32KB K threshold = 21.84 ≈ 22 packets
     tch.SetRootQueueDisc ("ns3::RedQueueDisc",
                             "LinkBandwidth", StringValue ("1Gbps"),
                             "LinkDelay", StringValue ("25us"),
-                            "MinTh", DoubleValue (20),
-                            "MaxTh", DoubleValue (20));
+                            "MinTh", DoubleValue (22),
+                            "MaxTh", DoubleValue (22));
   
   }
   QueueDiscContainer queueDiscs = tch.Install (S1ToA);
@@ -284,5 +288,6 @@ int main (int argc, char *argv[])
 
   completionTimesStream.close ();
   Simulator::Destroy ();
+  NS_LOG_DEBUG("Finished in: " << finishTime << "ms");
   return 0;
 }

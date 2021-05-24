@@ -99,10 +99,10 @@ void TcpDctcpPlus::PktsAcked (Ptr<TcpSocketState> tcb, uint32_t segmentsAcked, c
       // NS_LOG_DEBUG("NOT! Normal");
       // NS_LOG_DEBUG(rtt + m_slowTime);
       // NS_LOG_DEBUG(rtt);
-      uint64_t new_rate = uint64_t(1000000 * (tcb->m_segmentSize * 8.0)/double((rtt + m_slowTime).GetMicroSeconds()));
-      new_rate = new_rate == 0 ? 1 : new_rate;
-      // NS_LOG_DEBUG(new_rate);
-      tcb->m_pacingRate = DataRate(new_rate);
+      uint64_t newRate = uint64_t(1000000 * (tcb->m_segmentSize * 8.0)/double((rtt + m_slowTime).GetMicroSeconds()));
+      newRate = newRate == 0 ? 1 : newRate;
+      // NS_LOG_DEBUG("tcb: " << tcb << " new rate: " << newRate << " slow time: " << m_slowTime);
+      tcb->m_pacingRate = DataRate(newRate);
     }
   }
 }
