@@ -68,6 +68,24 @@ static void TraceCwnd (Ptr<OutputStreamWrapper> cwndStream)
                                  MakeBoundCallback (&CwndTracer, cwndStream));
 }
 
+static void RttTracer (Ptr<OutputStreamWrapper> stream,
+           Time oldval, Time newval)
+{
+  NS_LOG_INFO (Simulator::Now ().GetSeconds () <<
+               " Rtt from " << oldval.GetMilliSeconds () <<
+               " to " << newval.GetMilliSeconds ());
+
+  *stream->GetStream () << Simulator::Now ().GetSeconds () << " "
+                        << oldval.GetMicroSeconds () << " "
+                        << newval.GetMicroSeconds () << std::endl;
+}
+
+static void TraceRtt (Ptr<OutputStreamWrapper> rttStream)
+{
+  Config::ConnectWithoutContext ("/NodeList/5/$ns3::TcpL4Protocol/SocketList/0/RTT",
+                                 MakeBoundCallback (&RttTracer, rttStream));
+}
+
 static void TraceAggregator (std::size_t index, Ptr<const Packet> p, const Address& a)
 {
   aggregatorBytes += p->GetSize ();
@@ -120,6 +138,10 @@ int main (int argc, char *argv[])
   std::string qStreamName = outputFilePath + "q.tr";
   Ptr<OutputStreamWrapper> qStream;
   qStream = asciiTraceHelper.CreateFileStream (qStreamName);
+
+  std::string rttStreamName = outputFilePath + "rtt.tr";
+  Ptr<OutputStreamWrapper> rttStream;
+  rttStream = asciiTraceHelper.CreateFileStream (rttStreamName);
 
   /******** Create Nodes ********/
   NS_LOG_DEBUG("Creating Nodes...");
@@ -321,6 +343,9 @@ int main (int argc, char *argv[])
   
   /* Start tracing cwnd of the connection after the connection is established */
   Simulator::Schedule (traceStart, &TraceCwnd, cwndStream);
+
+  /* Start tracing the RTT after the connection is established */
+  Simulator::Schedule (traceStart, &TraceRtt, rttStream);
   
   NS_LOG_DEBUG("Starting simulation...");
   Simulator::Stop (stopTime);
