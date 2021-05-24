@@ -39,7 +39,18 @@ Time firstFlowStart = Seconds(4); // high enough to ensure it's overwritten
 uint finishTime = 0;
 
 uint64_t aggregatorBytes;
-void TraceAggregator (std::size_t index, Ptr<const Packet> p, const Address& a)
+
+static void QueueOccupancyTracer (Ptr<OutputStreamWrapper> stream,
+                     uint32_t oldval, uint32_t newval)
+{
+  NS_LOG_INFO (Simulator::Now ().GetSeconds () <<
+               " Queue Disc size from " << oldval << " to " << newval);
+
+  *stream->GetStream () << Simulator::Now ().GetSeconds () << " "
+                        << newval << std::endl;
+}
+
+static void TraceAggregator (std::size_t index, Ptr<const Packet> p, const Address& a)
 {
   aggregatorBytes += p->GetSize ();
   if (aggregatorBytes >= ONE_MB - printLastXBytesReceived)
@@ -84,6 +95,10 @@ int main (int argc, char *argv[])
   Time startTime = Seconds (0);
   Time stopTime = Seconds (5);
 
+  AsciiTraceHelper asciiTraceHelper;
+  std::string qStreamName = outputFilePath + "q.tr";
+  Ptr<OutputStreamWrapper> qStream;
+  qStream = asciiTraceHelper.CreateFileStream (qStreamName);
 
   /******** Create Nodes ********/
   NS_LOG_DEBUG("Creating Nodes...");
@@ -203,6 +218,8 @@ int main (int argc, char *argv[])
   
   }
   QueueDiscContainer queueDiscs = tch.Install (S1ToA);
+  queueDiscs.Get(0)->TraceConnectWithoutContext ("PacketsInQueue",
+                            MakeBoundCallback (&QueueOccupancyTracer, qStream));
   for (std::size_t i = 0; i < numIntermediateSwitches; i++)
     {
       tch.Install (intermediateSwitchesToS1[i]);
