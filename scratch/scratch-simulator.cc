@@ -37,6 +37,8 @@ int printLastXBytesReceived = 0;
 size_t numFlows = 9;
 Time firstFlowStart = Seconds(4); // high enough to ensure it's overwritten
 uint finishTime = 0;
+uint randomStartWindow = 10; // µs
+Time traceStart = MicroSeconds (double(randomStartWindow));
 
 uint64_t aggregatorBytes;
 
@@ -48,6 +50,22 @@ static void QueueOccupancyTracer (Ptr<OutputStreamWrapper> stream,
 
   *stream->GetStream () << Simulator::Now ().GetSeconds () << " "
                         << newval << std::endl;
+}
+
+static void CwndTracer (Ptr<OutputStreamWrapper> stream,
+            uint32_t oldval, uint32_t newval)
+{
+  NS_LOG_INFO (Simulator::Now ().GetSeconds () <<
+               " Cwnd size from " << oldval << " to " << newval);
+
+  *stream->GetStream () << Simulator::Now ().GetSeconds () << " "
+                        << newval << std::endl;
+}
+
+static void TraceCwnd (Ptr<OutputStreamWrapper> cwndStream)
+{
+  Config::ConnectWithoutContext ("/NodeList/5/$ns3::TcpL4Protocol/SocketList/0/CongestionWindow",
+                                 MakeBoundCallback (&CwndTracer, cwndStream));
 }
 
 static void TraceAggregator (std::size_t index, Ptr<const Packet> p, const Address& a)
@@ -96,14 +114,17 @@ int main (int argc, char *argv[])
   Time stopTime = Seconds (5);
 
   AsciiTraceHelper asciiTraceHelper;
+  std::string cwndStreamName = outputFilePath + "cwnd.tr";
+  Ptr<OutputStreamWrapper> cwndStream = asciiTraceHelper.CreateFileStream (cwndStreamName);
+
   std::string qStreamName = outputFilePath + "q.tr";
   Ptr<OutputStreamWrapper> qStream;
   qStream = asciiTraceHelper.CreateFileStream (qStreamName);
 
   /******** Create Nodes ********/
   NS_LOG_DEBUG("Creating Nodes...");
-  NS_LOG_DEBUG("using " + tcpTypeId + " with " + std::to_string(numFlows) + 
-               " flows, outputs in " + outputFilePath);
+  NS_LOG_DEBUG("using " << tcpTypeId << " with " << numFlows << " flows and " << 
+                numSenders << " senders, outputs in " << outputFilePath);
   if (enableSwitchEcn) {
     NS_LOG_DEBUG("ecn switch enabled");
   }
@@ -288,16 +309,18 @@ int main (int argc, char *argv[])
     ftp.SetAttribute ("MaxBytes", UintegerValue (maxBytes));
     bulkSenders.push_back (ftp);
     ApplicationContainer senderApp = ftp.Install (senders.Get (i % numSenders));
-    Time slightDelay = MicroSeconds(aggregatorRequestDelay->GetInteger(1, 10));
+    Time slightDelay = MicroSeconds(aggregatorRequestDelay->GetInteger(1, randomStartWindow));
     firstFlowStart = firstFlowStart < slightDelay ? firstFlowStart : slightDelay;
     senderApp.Start (startTime + slightDelay);
     senderApp.Stop (stopTime);
     senderApps.push_back (senderApp);
   }
 
-  NS_LOG_DEBUG("Opening output file(s)...");
   completionTimesStream.open (outputFilePath + outputFilename, std::ios::out | std::ios::app);
   aggSink->TraceConnectWithoutContext ("Rx", MakeBoundCallback (&TraceAggregator, 0));
+  
+  /* Start tracing cwnd of the connection after the connection is established */
+  Simulator::Schedule (traceStart, &TraceCwnd, cwndStream);
   
   NS_LOG_DEBUG("Starting simulation...");
   Simulator::Stop (stopTime);
