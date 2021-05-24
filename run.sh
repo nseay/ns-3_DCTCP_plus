@@ -38,5 +38,9 @@ for TCPTYPE in ${Types[@]}; do
   fi
 done
 
+# comment out line below if not plotting all protocols
+python3 scratch/plot_dctcp_figures.py --dir $BASEDIR
+
+
 echo "Simulations are done!"
 # python3 -m http.server
